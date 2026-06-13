@@ -1,0 +1,10 @@
+Date,Order_ID,Customer_ID,Product,Category,Revenue,Cost,Profit,Quantity
+2025-01-02,O-1001,C-001,Laptop,Electronics,"1,200",900,300,1
+2025-01-05,O-1002,C-002,Office Chair,Furniture,450,280,170,2
+incorrect-date,O-1003,C-003,Phone,Electronics,800,520,280,1
+2025-01-12,O-1004,C-004,,Furniture,300,180,120,1
+2025-01-18,O-1005,C-005,Monitor,Electronics,,250,,2
+2025-01-18,O-1005,C-005,Monitor,Electronics,,250,,2
+2025-02-03,O-1006,C-001,Desk,Furniture,700,450,250,1
+2025-02-08,O-1007,,Headphones,Electronics,200,90,110,2
+2025-02-14,O-1008,C-006,Keyboard,Electronics,$150,invalid,80,3
