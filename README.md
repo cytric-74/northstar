@@ -38,6 +38,9 @@ python -m streamlit run app/main.py
 Open the local URL shown by Streamlit and upload
 `data/raw/sales_data.csv`.
 
+You can also use the IDE's **Run Python File** button on `app/main.py`. The
+script detects direct execution and starts Streamlit automatically.
+
 Run the automated tests:
 
 ```powershell
