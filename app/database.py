@@ -1,4 +1,4 @@
-"""SQLite persistence functions for cleaned sales data and KPI snapshots."""
+"""SQLite database interface for storing cleaned sales data and KPIs."""
 
 from __future__ import annotations
 
@@ -9,17 +9,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
-
 import pandas as pd
 
 from app.kpi_engine import kpis_to_dataframe
 
-
 DEFAULT_DATABASE_PATH = Path(__file__).resolve().parents[1] / "database" / "kpi_platform.db"
 
-
 def initialize_database(database_path: str | Path = DEFAULT_DATABASE_PATH) -> None:
-    """Create the SQLite database and Phase 2 tables when they do not exist."""
+    """Initialize SQLite tables for storing data runs and results."""
     path = Path(database_path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -60,10 +57,28 @@ def initialize_database(database_path: str | Path = DEFAULT_DATABASE_PATH) -> No
                 )
                 """
             )
-
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS sales_data (
+                    run_id TEXT NOT NULL,
+                    row_number INTEGER NOT NULL,
+                    Date TEXT,
+                    Order_ID TEXT,
+                    Customer_ID TEXT,
+                    Product TEXT,
+                    Category TEXT,
+                    Revenue REAL,
+                    Cost REAL,
+                    Profit REAL,
+                    Quantity INTEGER,
+                    PRIMARY KEY (run_id, row_number),
+                    FOREIGN KEY (run_id) REFERENCES kpi_runs(run_id)
+                )
+                """
+            )
 
 def _record_to_json(record: dict[str, Any]) -> str:
-    """Convert a sales row into SQLite-friendly JSON."""
+    """Format row dictionary to serializable JSON string."""
     serializable = {}
     for key, value in record.items():
         if pd.isna(value):
@@ -76,14 +91,13 @@ def _record_to_json(record: dict[str, Any]) -> str:
             serializable[key] = value
     return json.dumps(serializable)
 
-
 def save_analysis_run(
     cleaned_data: pd.DataFrame,
     kpis: dict[str, Any],
     source_name: str,
     database_path: str | Path = DEFAULT_DATABASE_PATH,
 ) -> str:
-    """Store one cleaned dataset and its KPI snapshot, then return its run ID."""
+    """Persist the run summary, core KPIs, and relational sales rows to SQLite."""
     initialize_database(database_path)
     run_id = str(uuid4())
     created_at = datetime.now(timezone.utc).isoformat()
@@ -138,13 +152,46 @@ def save_analysis_run(
                 ],
             )
 
-    return run_id
+            sales_rows = []
+            for row_number, row in enumerate(cleaned_data.to_dict("records"), start=1):
+                date_val = None
+                if "Date" in row and pd.notna(row["Date"]):
+                    if isinstance(row["Date"], pd.Timestamp):
+                        date_val = row["Date"].strftime("%Y-%m-%d")
+                    elif isinstance(row["Date"], str):
+                        date_val = row["Date"]
+                    else:
+                        date_val = str(row["Date"])
+                
+                sales_rows.append((
+                    run_id,
+                    row_number,
+                    date_val,
+                    row.get("Order_ID"),
+                    row.get("Customer_ID"),
+                    row.get("Product"),
+                    row.get("Category"),
+                    None if pd.isna(row.get("Revenue")) else float(row.get("Revenue")),
+                    None if pd.isna(row.get("Cost")) else float(row.get("Cost")),
+                    None if pd.isna(row.get("Profit")) else float(row.get("Profit")),
+                    None if pd.isna(row.get("Quantity")) else int(row.get("Quantity")),
+                ))
 
+            connection.executemany(
+                """
+                INSERT INTO sales_data (
+                    run_id, row_number, Date, Order_ID, Customer_ID, Product, Category, Revenue, Cost, Profit, Quantity
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                sales_rows,
+            )
+
+    return run_id
 
 def load_kpi_history(
     database_path: str | Path = DEFAULT_DATABASE_PATH,
 ) -> pd.DataFrame:
-    """Load all stored KPI snapshots, newest first."""
+    """Query historic analysis runs from the database."""
     initialize_database(database_path)
     query = """
         SELECT

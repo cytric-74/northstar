@@ -25,10 +25,12 @@ def test_save_analysis_run_persists_sales_and_kpis(tmp_path):
 
     with closing(sqlite3.connect(database_path)) as connection:
         sales_rows = connection.execute("SELECT COUNT(*) FROM cleaned_sales").fetchone()[0]
+        relational_rows = connection.execute("SELECT COUNT(*) FROM sales_data").fetchone()[0]
         kpi_rows = connection.execute("SELECT COUNT(*) FROM kpi_results").fetchone()[0]
 
     assert run_id
     assert sales_rows == 2
+    assert relational_rows == 2
     assert kpi_rows == 7
     assert len(history) == 7
     assert set(history["source_name"]) == {"sales.csv"}

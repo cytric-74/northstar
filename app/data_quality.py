@@ -1,13 +1,11 @@
-"""Reusable data cleaning and data-quality reporting functions."""
+"""Data quality and cleaning operations for raw sales datasets."""
 
 from __future__ import annotations
 
 import re
 from pathlib import Path
 from typing import Any
-
 import pandas as pd
-
 
 EXPECTED_COLUMNS = [
     "Date",
@@ -23,31 +21,21 @@ EXPECTED_COLUMNS = [
 NUMERIC_COLUMNS = ["Revenue", "Cost", "Profit", "Quantity"]
 TEXT_COLUMNS = ["Order_ID", "Customer_ID", "Product", "Category"]
 
-
 def load_data(filepath: str | Path) -> pd.DataFrame:
-    """Load a CSV file into a DataFrame."""
     return pd.read_csv(filepath)
 
-
 def check_missing_values(data: pd.DataFrame) -> pd.Series:
-    """Return missing-value counts by column."""
     return data.isna().sum()
 
-
 def check_duplicates(data: pd.DataFrame) -> int:
-    """Return the number of exact duplicate rows."""
     return int(data.duplicated().sum())
 
-
 def validate_dates(data: pd.DataFrame) -> int:
-    """Return the number of missing or invalid Date values without mutating input."""
     if "Date" not in data.columns:
         return 0
     return int(pd.to_datetime(data["Date"], errors="coerce").isna().sum())
 
-
 def generate_quality_report(data: pd.DataFrame) -> dict[str, Any]:
-    """Return a simple raw-data quality report."""
     return {
         "Total Rows": int(len(data)),
         "Missing Values": check_missing_values(data).to_dict(),
@@ -55,9 +43,7 @@ def generate_quality_report(data: pd.DataFrame) -> dict[str, Any]:
         "Invalid Dates": validate_dates(data),
     }
 
-
 def standardize_column_names(data: pd.DataFrame) -> pd.DataFrame:
-    """Match common column-name variations to the project's standard names."""
     cleaned = data.copy()
     expected_lookup = {
         re.sub(r"[^a-z0-9]", "", column.lower()): column
@@ -69,26 +55,20 @@ def standardize_column_names(data: pd.DataFrame) -> pd.DataFrame:
         renamed_columns[column] = expected_lookup.get(normalized, str(column).strip())
     return cleaned.rename(columns=renamed_columns)
 
-
 def _clean_numeric_series(series: pd.Series) -> pd.Series:
-    """Convert currency-formatted or comma-formatted values into numbers."""
     text_values = series.astype("string").str.strip()
     text_values = text_values.str.replace(r"[$,]", "", regex=True)
     text_values = text_values.replace({"": pd.NA, "None": pd.NA, "nan": pd.NA})
     return pd.to_numeric(text_values, errors="coerce")
 
-
 def _quality_score(data: pd.DataFrame) -> float:
-    """Calculate the percentage of cells that are populated."""
     if data.empty or data.shape[1] == 0:
         return 0.0
     populated_cells = int(data.notna().sum().sum())
     total_cells = int(data.shape[0] * data.shape[1])
     return round((populated_cells / total_cells) * 100, 1)
 
-
 def build_column_report(before: pd.DataFrame, after: pd.DataFrame) -> pd.DataFrame:
-    """Create a before-and-after quality summary for every uploaded column."""
     rows = []
     all_columns = list(dict.fromkeys([*before.columns, *after.columns]))
     for column in all_columns:
@@ -105,11 +85,10 @@ def build_column_report(before: pd.DataFrame, after: pd.DataFrame) -> pd.DataFra
         )
     return pd.DataFrame(rows)
 
-
 def clean_sales_data(
     data: pd.DataFrame,
 ) -> tuple[pd.DataFrame, dict[str, Any], pd.DataFrame, list[str]]:
-    """Clean uploaded sales data and return the cleaned data plus quality reports."""
+    """Clean data and return standard tables plus operational logs."""
     if data.empty:
         raise ValueError("The uploaded CSV does not contain any data rows.")
 
@@ -120,7 +99,7 @@ def clean_sales_data(
     duplicate_rows = int(cleaned.duplicated().sum())
     if duplicate_rows:
         cleaned = cleaned.drop_duplicates().copy()
-        actions.append(f"Removed {duplicate_rows} exact duplicate row(s).")
+        actions.append(f"Removed {duplicate_rows} duplicate rows.")
 
     object_columns = cleaned.select_dtypes(include=["object", "string"]).columns
     for column in object_columns:
@@ -135,11 +114,9 @@ def clean_sales_data(
         unusable_date_rows = int(cleaned["Date"].isna().sum())
         if unusable_date_rows:
             cleaned = cleaned.dropna(subset=["Date"]).copy()
-            actions.append(
-                f"Removed {unusable_date_rows} row(s) with missing or invalid dates."
-            )
+            actions.append(f"Removed {unusable_date_rows} rows with invalid dates.")
     else:
-        actions.append("Date column was not supplied; date validation was skipped.")
+        actions.append("Date column not supplied; date validation skipped.")
 
     for column in NUMERIC_COLUMNS:
         if column not in cleaned.columns:
@@ -150,18 +127,13 @@ def clean_sales_data(
             missing_profit = int(cleaned[column].isna().sum())
             cleaned[column] = cleaned[column].fillna(derived_profit)
             if missing_profit:
-                actions.append(
-                    f"Calculated {missing_profit} missing Profit value(s) as Revenue - Cost."
-                )
+                actions.append(f"Derived {missing_profit} missing Profit values as Revenue - Cost.")
         missing_numeric = int(cleaned[column].isna().sum())
         if missing_numeric:
             median = cleaned[column].median()
             fill_value = float(median) if pd.notna(median) else 0.0
             cleaned[column] = cleaned[column].fillna(fill_value)
-            actions.append(
-                f"Filled {missing_numeric} missing/invalid {column} value(s) "
-                f"with the median ({fill_value:,.2f})."
-            )
+            actions.append(f"Filled {missing_numeric} empty {column} rows with median ({fill_value:,.2f}).")
 
     for column in TEXT_COLUMNS:
         if column not in cleaned.columns:
@@ -169,15 +141,13 @@ def clean_sales_data(
         missing_text = int(cleaned[column].isna().sum())
         if missing_text:
             cleaned[column] = cleaned[column].fillna("Unknown")
-            actions.append(
-                f"Replaced {missing_text} missing {column} value(s) with 'Unknown'."
-            )
+            actions.append(f"Replaced {missing_text} empty {column} values with 'Unknown'.")
 
     cleaned = cleaned.sort_values("Date") if "Date" in cleaned.columns else cleaned
     cleaned = cleaned.reset_index(drop=True)
     missing_expected = [column for column in EXPECTED_COLUMNS if column not in cleaned]
     if missing_expected:
-        actions.append("Optional expected columns not supplied: " + ", ".join(missing_expected))
+        actions.append("Optional expected columns missing: " + ", ".join(missing_expected))
 
     summary = {
         "rows_before": int(len(original)),
@@ -193,15 +163,11 @@ def clean_sales_data(
     }
     return cleaned, summary, build_column_report(original, cleaned), actions
 
-
 def clean_data(data: pd.DataFrame) -> pd.DataFrame:
-    """Backward-compatible helper that returns only the cleaned DataFrame."""
     cleaned, _, _, _ = clean_sales_data(data)
     return cleaned
 
-
 def dataframe_to_csv_bytes(data: pd.DataFrame) -> bytes:
-    """Convert a DataFrame into downloadable UTF-8 CSV bytes."""
     export = data.copy()
     if "Date" in export.columns:
         export["Date"] = export["Date"].dt.strftime("%Y-%m-%d")
