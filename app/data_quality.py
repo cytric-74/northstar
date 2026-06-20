@@ -122,6 +122,11 @@ def clean_sales_data(
         if column not in cleaned.columns:
             continue
         cleaned[column] = _clean_numeric_series(cleaned[column])
+        if column in ["Revenue", "Cost", "Quantity"]:
+            negatives = int((cleaned[column] < 0).sum())
+            if negatives:
+                cleaned[column] = cleaned[column].abs()
+                actions.append(f"Sanitized {negatives} negative values in '{column}' by taking their absolute value.")
         if column == "Profit" and {"Revenue", "Cost"}.issubset(cleaned.columns):
             derived_profit = cleaned["Revenue"] - cleaned["Cost"]
             missing_profit = int(cleaned[column].isna().sum())

@@ -171,7 +171,7 @@ def run_custom_query(
     forbidden = ["DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "CREATE", "TRUNCATE"]
     for keyword in forbidden:
         if keyword in cleaned_sql.upper():
-            raise ValueError(f"Security error: '{keyword}' is not allowed.")
+            raise ValueError(f"Security error: Use of forbidden keyword '{keyword}' is not allowed.")
 
     with closing(sqlite3.connect(database_path)) as connection:
         return pd.read_sql_query(cleaned_sql, connection, params={"run_id": run_id})

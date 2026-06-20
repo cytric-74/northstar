@@ -94,8 +94,10 @@ def analyze_root_cause(data: pd.DataFrame, metric: str = "Revenue") -> dict[str,
 
         dim_grouped["Change"] = dim_grouped[current_month] - dim_grouped[previous_month]
         dim_grouped["Pct_Change"] = (
-            (dim_grouped["Change"] / dim_grouped[previous_month]) * 100
-        ).fillna(0.0)
+            ((dim_grouped["Change"] / dim_grouped[previous_month]) * 100)
+            .replace([float("inf"), float("-inf")], 0.0)
+            .fillna(0.0)
+        )
         
         # We only care about negative contributors (who dragged it down)
         contributors = dim_grouped[dim_grouped["Change"] < 0].copy()
@@ -108,7 +110,6 @@ def analyze_root_cause(data: pd.DataFrame, metric: str = "Revenue") -> dict[str,
         
         # Sort by impact
         contributors = contributors.sort_values(by="Change", ascending=True)
-        dimension_reports[dim] = contributors.reset_index()
 
         # Generate insight for the top contributor in this dimension
         top_culprit = contributors.index[0]
@@ -117,6 +118,10 @@ def analyze_root_cause(data: pd.DataFrame, metric: str = "Revenue") -> dict[str,
         culprit_drop = abs(contributors.loc[top_culprit, "Change"])
         culprit_pct = abs(contributors.loc[top_culprit, "Pct_Change"])
         contrib_pct = contributors.loc[top_culprit, "Contribution_Pct"]
+
+        # Convert Period column headers to strings to prevent Streamlit/Arrow rendering crashes
+        contributors.columns = [str(col) for col in contributors.columns]
+        dimension_reports[dim] = contributors.reset_index()
 
         # Clean display string for Customer_ID
         display_name = f"Customer '{top_culprit}'" if dim == "Customer_ID" else str(top_culprit)
