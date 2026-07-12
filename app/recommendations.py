@@ -1,23 +1,17 @@
-"""Business Recommendation Engine providing rule-based actionable insights."""
-
 from __future__ import annotations
 
 from typing import Any
 import pandas as pd
-
 
 def generate_recommendations(
     data: pd.DataFrame,
     kpis: dict[str, Any],
     quality_summary: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    """Analyze database records, KPI state, and quality alerts to output business advice."""
     recommendations = []
-
     if data.empty:
         return recommendations
 
-    # 1. Company-wide Profit Margin Audit
     margin = kpis.get("profit_margin")
     if margin is not None and margin < 15.0:
         recommendations.append(
@@ -34,16 +28,10 @@ def generate_recommendations(
             }
         )
 
-    # 2. Product-level Profitability Audit (Loss Leaders)
     if {"Product", "Revenue", "Profit"}.issubset(data.columns):
         product_stats = data.groupby("Product")[["Revenue", "Profit"]].sum()
-        product_stats["Margin_Pct"] = (
-            product_stats["Profit"] / product_stats["Revenue"]
-        ) * 100
-        
-        unprofitable = product_stats[product_stats["Profit"] < 0].sort_values(
-            by="Profit"
-        )
+        product_stats["Margin_Pct"] = (product_stats["Profit"] / product_stats["Revenue"]) * 100
+        unprofitable = product_stats[product_stats["Profit"] < 0].sort_values(by="Profit")
         for prod, row in unprofitable.head(2).iterrows():
             recommendations.append(
                 {
@@ -59,12 +47,10 @@ def generate_recommendations(
                 }
             )
 
-    # 3. High Volume Inventory Buffering
     if {"Product", "Revenue", "Quantity"}.issubset(data.columns):
         total_rev = kpis.get("revenue", 1.0)
         product_revs = data.groupby("Product")["Revenue"].sum()
-        top_products = product_revs[product_revs / total_rev >= 0.20]  # Accounts for 20%+ of revenue
-        
+        top_products = product_revs[product_revs / total_rev >= 0.20]
         for prod, rev in top_products.items():
             contrib = (rev / total_rev) * 100
             recommendations.append(
@@ -81,16 +67,13 @@ def generate_recommendations(
                 }
             )
 
-    # 4. Customer Concentration Risk Analysis
     if {"Customer_ID", "Revenue"}.issubset(data.columns):
         total_rev = kpis.get("revenue", 1.0)
         customer_revs = data.groupby("Customer_ID")["Revenue"].sum().drop("Unknown", errors="ignore")
-        
         if not customer_revs.empty:
             top_cust = customer_revs.idxmax()
             top_cust_rev = customer_revs.max()
             cust_contrib = (top_cust_rev / total_rev) * 100
-            
             if cust_contrib >= 25.0:
                 recommendations.append(
                     {
@@ -107,7 +90,6 @@ def generate_recommendations(
                     }
                 )
 
-    # 5. Data Integrity Audits (from Quality Report)
     duplicates = quality_summary.get("duplicate_rows_removed", 0)
     if duplicates > 0:
         recommendations.append(

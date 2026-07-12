@@ -1,5 +1,3 @@
-"""KPI Engine for computing revenue, profit, margins, growth, and orders."""
-
 from __future__ import annotations
 
 from typing import Any
@@ -58,9 +56,7 @@ def calculate_profit(data: pd.DataFrame) -> float:
 
 def calculate_profit_margin(data: pd.DataFrame) -> float | None:
     rev = calculate_revenue(data)
-    if rev == 0:
-        return None
-    return (calculate_profit(data) / rev) * 100
+    return None if rev == 0 else (calculate_profit(data) / rev) * 100
 
 def _count_distinct_known(series: pd.Series) -> int:
     known = series.dropna().astype("string").str.strip()
@@ -75,30 +71,22 @@ def calculate_customers(data: pd.DataFrame) -> int:
 
 def calculate_average_order_value(data: pd.DataFrame) -> float | None:
     orders = calculate_orders(data)
-    if orders == 0:
-        return None
-    return calculate_revenue(data) / orders
+    return None if orders == 0 else calculate_revenue(data) / orders
 
 def calculate_monthly_growth(data: pd.DataFrame) -> dict[str, Any]:
-    """Compare revenue for the latest two calendar months."""
+    null_res = {
+        "growth_rate": None,
+        "current_period": None,
+        "previous_period": None,
+        "current_revenue": None,
+        "previous_revenue": None,
+    }
     if "Date" not in data.columns:
-        return {
-            "growth_rate": None,
-            "current_period": None,
-            "previous_period": None,
-            "current_revenue": None,
-            "previous_revenue": None,
-        }
+        return null_res
 
     dated = data.dropna(subset=["Date"]).copy()
     if dated.empty:
-        return {
-            "growth_rate": None,
-            "current_period": None,
-            "previous_period": None,
-            "current_revenue": None,
-            "previous_revenue": None,
-        }
+        return null_res
 
     dated["Month"] = dated["Date"].dt.to_period("M")
     monthly_rev = dated.groupby("Month")["Revenue"].sum().sort_index()
@@ -112,11 +100,8 @@ def calculate_monthly_growth(data: pd.DataFrame) -> dict[str, Any]:
             "previous_revenue": None,
         }
 
-    curr_p = monthly_rev.index[-1]
-    prev_p = monthly_rev.index[-2]
-    curr_rev = float(monthly_rev.iloc[-1])
-    prev_rev = float(monthly_rev.iloc[-2])
-    
+    curr_p, prev_p = monthly_rev.index[-1], monthly_rev.index[-2]
+    curr_rev, prev_rev = float(monthly_rev.iloc[-1]), float(monthly_rev.iloc[-2])
     growth = None if prev_rev == 0 else ((curr_rev - prev_rev) / prev_rev) * 100
 
     return {
@@ -148,7 +133,7 @@ def calculate_kpis(data: pd.DataFrame) -> dict[str, Any]:
     }
 
 def kpis_to_dataframe(kpis: dict[str, Any]) -> pd.DataFrame:
-    rows = [
+    return pd.DataFrame([
         {"KPI": "Revenue", "Value": kpis["revenue"], "Unit": "currency"},
         {"KPI": "Profit", "Value": kpis["profit"], "Unit": "currency"},
         {"KPI": "Profit Margin", "Value": kpis["profit_margin"], "Unit": "percent"},
@@ -156,5 +141,4 @@ def kpis_to_dataframe(kpis: dict[str, Any]) -> pd.DataFrame:
         {"KPI": "Orders", "Value": kpis["orders"], "Unit": "count"},
         {"KPI": "Customers", "Value": kpis["customers"], "Unit": "count"},
         {"KPI": "Monthly Growth Rate", "Value": kpis["growth_rate"], "Unit": "percent"},
-    ]
-    return pd.DataFrame(rows)
+    ])

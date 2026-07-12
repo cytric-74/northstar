@@ -1,5 +1,3 @@
-"""Data quality and cleaning operations for raw sales datasets."""
-
 from __future__ import annotations
 
 import re
@@ -69,26 +67,20 @@ def _quality_score(data: pd.DataFrame) -> float:
     return round((populated_cells / total_cells) * 100, 1)
 
 def build_column_report(before: pd.DataFrame, after: pd.DataFrame) -> pd.DataFrame:
-    rows = []
-    all_columns = list(dict.fromkeys([*before.columns, *after.columns]))
-    for column in all_columns:
-        before_series = before[column] if column in before else pd.Series(dtype="object")
-        after_series = after[column] if column in after else pd.Series(dtype="object")
-        rows.append(
-            {
-                "Column": column,
-                "Data Type After Cleaning": str(after_series.dtype),
-                "Missing Before": int(before_series.isna().sum()),
-                "Missing After": int(after_series.isna().sum()),
-                "Unique Values After": int(after_series.nunique(dropna=True)),
-            }
-        )
-    return pd.DataFrame(rows)
+    return pd.DataFrame([
+        {
+            "Column": col,
+            "Data Type After Cleaning": str(after[col].dtype) if col in after else "object",
+            "Missing Before": int(before[col].isna().sum()) if col in before else 0,
+            "Missing After": int(after[col].isna().sum()) if col in after else 0,
+            "Unique Values After": int(after[col].nunique(dropna=True)) if col in after else 0,
+        }
+        for col in list(dict.fromkeys([*before.columns, *after.columns]))
+    ])
 
 def clean_sales_data(
     data: pd.DataFrame,
 ) -> tuple[pd.DataFrame, dict[str, Any], pd.DataFrame, list[str]]:
-    """Clean data and return standard tables plus operational logs."""
     if data.empty:
         raise ValueError("The uploaded CSV does not contain any data rows.")
 

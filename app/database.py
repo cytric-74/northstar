@@ -1,5 +1,3 @@
-"""SQLite database interface for storing cleaned sales data and KPIs."""
-
 from __future__ import annotations
 
 import json
@@ -8,20 +6,23 @@ from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+import os
 from uuid import uuid4
 import pandas as pd
 
 from app.kpi_engine import kpis_to_dataframe
 
-DEFAULT_DATABASE_PATH = Path(__file__).resolve().parents[1] / "database" / "kpi_platform.db"
+db_env = os.environ.get("NORTHSTAR_DB_PATH")
+DEFAULT_DATABASE_PATH = Path(db_env) if db_env else Path(__file__).resolve().parents[1] / "database" / "kpi_platform.db"
 
 def initialize_database(database_path: str | Path = DEFAULT_DATABASE_PATH) -> None:
-    """Initialize SQLite tables for storing data runs and results."""
     path = Path(database_path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
     with closing(sqlite3.connect(path)) as connection:
         with connection:
+            connection.execute("PRAGMA journal_mode=WAL")
+            connection.execute("PRAGMA synchronous=NORMAL")
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS kpi_runs (
@@ -76,20 +77,15 @@ def initialize_database(database_path: str | Path = DEFAULT_DATABASE_PATH) -> No
                 )
                 """
             )
+            connection.execute("CREATE INDEX IF NOT EXISTS idx_sales_data_run_id ON sales_data(run_id)")
+            connection.execute("CREATE INDEX IF NOT EXISTS idx_cleaned_sales_run_id ON cleaned_sales(run_id)")
+            connection.execute("CREATE INDEX IF NOT EXISTS idx_kpi_results_run_id ON kpi_results(run_id)")
 
 def _record_to_json(record: dict[str, Any]) -> str:
-    """Format row dictionary to serializable JSON string."""
-    serializable = {}
-    for key, value in record.items():
-        if pd.isna(value):
-            serializable[key] = None
-        elif isinstance(value, pd.Timestamp):
-            serializable[key] = value.strftime("%Y-%m-%d")
-        elif hasattr(value, "item"):
-            serializable[key] = value.item()
-        else:
-            serializable[key] = value
-    return json.dumps(serializable)
+    return json.dumps({
+        k: (None if pd.isna(v) else (v.strftime("%Y-%m-%d") if isinstance(v, pd.Timestamp) else (v.item() if hasattr(v, "item") else v)))
+        for k, v in record.items()
+    })
 
 def save_analysis_run(
     cleaned_data: pd.DataFrame,
@@ -97,7 +93,6 @@ def save_analysis_run(
     source_name: str,
     database_path: str | Path = DEFAULT_DATABASE_PATH,
 ) -> str:
-    """Persist the run summary, core KPIs, and relational sales rows to SQLite."""
     initialize_database(database_path)
     run_id = str(uuid4())
     created_at = datetime.now(timezone.utc).isoformat()
@@ -158,8 +153,6 @@ def save_analysis_run(
                 if "Date" in row and pd.notna(row["Date"]):
                     if isinstance(row["Date"], pd.Timestamp):
                         date_val = row["Date"].strftime("%Y-%m-%d")
-                    elif isinstance(row["Date"], str):
-                        date_val = row["Date"]
                     else:
                         date_val = str(row["Date"])
                 
@@ -191,7 +184,6 @@ def save_analysis_run(
 def load_kpi_history(
     database_path: str | Path = DEFAULT_DATABASE_PATH,
 ) -> pd.DataFrame:
-    """Query historic analysis runs from the database."""
     initialize_database(database_path)
     query = """
         SELECT

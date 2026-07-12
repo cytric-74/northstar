@@ -1,5 +1,3 @@
-"""SQL Analytics Engine for executing queries against the SQLite database."""
-
 from __future__ import annotations
 
 import sqlite3
@@ -150,12 +148,12 @@ def run_predefined_query(
     query_key: str,
     database_path: str | Path = DEFAULT_DATABASE_PATH,
 ) -> pd.DataFrame:
-    """Execute predefined analytical query."""
     if query_key not in PREDEFINED_QUERIES:
         raise ValueError(f"Unknown query key: {query_key}")
 
     query_str = PREDEFINED_QUERIES[query_key]["query"]
-    with closing(sqlite3.connect(database_path)) as connection:
+    db_uri = f"{Path(database_path).resolve().absolute().as_uri()}?mode=ro"
+    with closing(sqlite3.connect(db_uri, uri=True)) as connection:
         return pd.read_sql_query(query_str, connection, params={"run_id": run_id})
 
 def run_custom_query(
@@ -163,15 +161,17 @@ def run_custom_query(
     custom_sql: str,
     database_path: str | Path = DEFAULT_DATABASE_PATH,
 ) -> pd.DataFrame:
-    """Run safety-checked SELECT query against database."""
     cleaned_sql = custom_sql.strip()
-    if not cleaned_sql.upper().startswith("SELECT"):
-        raise ValueError("Security error: Only SELECT queries are allowed.")
+    if ";" in cleaned_sql:
+        raise ValueError("Security error: Multiple statements (semicolons) are not allowed.")
+    if not cleaned_sql.upper().startswith("SELECT") and not cleaned_sql.upper().startswith("WITH"):
+        raise ValueError("Security error: Only SELECT or WITH queries are allowed.")
 
     forbidden = ["DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "CREATE", "TRUNCATE"]
     for keyword in forbidden:
         if keyword in cleaned_sql.upper():
             raise ValueError(f"Security error: Use of forbidden keyword '{keyword}' is not allowed.")
 
-    with closing(sqlite3.connect(database_path)) as connection:
+    db_uri = f"{Path(database_path).resolve().absolute().as_uri()}?mode=ro"
+    with closing(sqlite3.connect(db_uri, uri=True)) as connection:
         return pd.read_sql_query(cleaned_sql, connection, params={"run_id": run_id})

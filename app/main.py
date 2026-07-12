@@ -3,7 +3,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-# Add workspace directory to python search path
 project_root = str(Path(__file__).resolve().parents[1])
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
@@ -30,10 +29,12 @@ st.set_page_config(
 )
 
 SAMPLE_DATA_PATH = Path("data/raw/sales_data.csv")
-if not SAMPLE_DATA_PATH.exists():
-    generate_rich_sales_data(SAMPLE_DATA_PATH)
+try:
+    if not SAMPLE_DATA_PATH.exists():
+        generate_rich_sales_data(SAMPLE_DATA_PATH)
+except Exception:
+    pass
 
-# Necto Mono inspired dark-mode stylesheets
 st.markdown(
     """
     <style>
@@ -197,10 +198,7 @@ def format_percent(value: float | None) -> str:
     return "N/A" if value is None or pd.isna(value) else f"{value:,.2f}%"
 
 with st.sidebar:
-    st.markdown(
-        '<div class="sidebar-logo">NORTHSTAR</div>',
-        unsafe_allow_html=True,
-    )
+    st.markdown('<div class="sidebar-logo">NORTHSTAR</div>', unsafe_allow_html=True)
     st.markdown(
         '<div><span class="badge-neutral">v1.1</span>'
         '<span class="badge-accent">Professional</span></div>',
@@ -224,25 +222,17 @@ with st.sidebar:
     st.write("---")
     st.caption("cytric (github.com/cytric-74)")
 
-if "raw_df" not in st.session_state:
-    st.session_state["raw_df"] = None
-if "cleaned_df" not in st.session_state:
-    st.session_state["cleaned_df"] = None
-if "quality_summary" not in st.session_state:
-    st.session_state["quality_summary"] = None
-if "column_report" not in st.session_state:
-    st.session_state["column_report"] = None
+for key in ["raw_df", "cleaned_df", "quality_summary", "column_report", "kpis"]:
+    if key not in st.session_state:
+        st.session_state[key] = None
 if "actions_log" not in st.session_state:
     st.session_state["actions_log"] = []
-if "kpis" not in st.session_state:
-    st.session_state["kpis"] = None
 if "source_name" not in st.session_state:
     st.session_state["source_name"] = ""
 if "active_run_id" not in st.session_state:
     st.session_state["active_run_id"] = ""
 
-# Auto-load synthetic data if nothing is loaded yet
-if st.session_state["raw_df"] is None:
+if st.session_state["raw_df"] is None and SAMPLE_DATA_PATH.exists():
     try:
         synth_df = pd.read_csv(SAMPLE_DATA_PATH)
         cleaned, summary, col_rep, actions = clean_sales_data(synth_df)
@@ -261,7 +251,6 @@ if st.session_state["raw_df"] is None:
     except Exception as e:
         st.sidebar.error(f"Failed to auto-load sample data: {e}")
 
-# --- Upload & Quality ---
 if menu == "Upload & Quality":
     st.title("Data Upload & Quality Engine")
     st.write(
@@ -378,7 +367,6 @@ if menu == "Upload & Quality":
             "text/csv",
         )
 
-# --- KPI Dashboard ---
 elif menu == "KPI Dashboard":
     st.title("Executive KPI Dashboard")
     st.write(
@@ -464,7 +452,6 @@ elif menu == "KPI Dashboard":
         st.subheader("Calculations Formula Reference")
         st.dataframe(pd.DataFrame(KPI_DEFINITIONS), use_container_width=True, hide_index=True)
 
-# --- SQL Playground ---
 elif menu == "SQL Playground":
     st.title("Interactive SQL Playground")
     st.write(
@@ -486,7 +473,6 @@ elif menu == "SQL Playground":
 
     report = PREDEFINED_QUERIES[query_option]
     st.write(f"*{report['description']}*")
-
     st.code(report["query"].replace(":run_id", f"'{run_id}'"), language="sql")
 
     try:
@@ -524,7 +510,6 @@ elif menu == "SQL Playground":
         except Exception as e:
             st.error(f"SQL Execution Error: {e}")
 
-# --- Trends & Root Cause ---
 elif menu == "Trends & Root Cause":
     st.title("Trend & Root Cause Analysis")
     st.write(
@@ -561,12 +546,11 @@ elif menu == "Trends & Root Cause":
         with col3:
             cat = trends["fastest_growing_category"]
             rate = trends["fastest_growing_category_rate"]
-            rate_str = format_percent(rate)
             st.markdown(
                 f"""<div class="kpi-card">
                     <div class="kpi-card-title">Fastest-Growing Division</div>
                     <div class="kpi-card-value">{cat or 'N/A'}</div>
-                    <div class="kpi-card-growth growth-up">Growth: {rate_str} MoM</div>
+                    <div class="kpi-card-growth growth-up">Growth: {format_percent(rate)} MoM</div>
                 </div>""",
                 unsafe_allow_html=True,
             )
@@ -605,7 +589,6 @@ elif menu == "Trends & Root Cause":
                 if "Customer_ID" in rca["dimension_reports"]:
                     st.dataframe(pd.DataFrame(rca["dimension_reports"]["Customer_ID"]), use_container_width=True, hide_index=True)
 
-# --- Forecasting ---
 elif menu == "Forecasting":
     st.title("Predictive Sales Forecasting")
     st.write(
@@ -659,7 +642,6 @@ elif menu == "Forecasting":
         else:
             st.info("Ensure you have at least 5 unique days of historical sales to generate forecasts.")
 
-# --- Recommendations ---
 elif menu == "Recommendations":
     st.title("Business Recommendation Engine")
     st.write(
@@ -709,7 +691,6 @@ elif menu == "Recommendations":
     else:
         st.warning("Upload dataset in 'Upload & Quality' first to run the recommendations engine.")
 
-# --- Power BI Guide ---
 elif menu == "Power BI Guide":
     st.title("Power BI Development Suite")
     st.write(

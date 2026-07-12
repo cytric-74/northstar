@@ -1,30 +1,15 @@
 # KPI Intelligence Platform
 
-A portfolio project that turns uploaded sales data into trustworthy business
-analysis. This repository currently contains **Phases 1 and 2**: data upload,
-automatic cleaning, reusable KPI calculations, and SQLite persistence.
+A high-performance portfolio project that turns uploaded sales transactional data into trustworthy business analysis, complete with data validation, KPI calculation pipelines, custom SQL sandbox, forecasting, root cause analytics, and recommendations.
 
-## Phase 1 Features
+## Core Features
 
-- Upload a CSV through Streamlit.
-- Standardize common sales column names.
-- Remove exact duplicate rows.
-- validate dates and remove rows with unusable dates.
-- Convert currency and numeric fields.
-- Fill numeric gaps with the median.
-- Calculate missing profit when revenue and cost are available.
-- Label missing descriptive values as `Unknown`.
-- Show a before-and-after quality report.
-- Download the cleaned CSV.
-
-## Phase 2 Features
-
-- Calculate Revenue, Profit, Profit Margin, Average Order Value, Orders,
-  Customers, and Monthly Growth Rate.
-- Display formulas and business meanings.
-- Use reusable, tested Python KPI functions.
-- Save cleaned sales rows and timestamped KPI snapshots to SQLite.
-- Review stored KPI history in Streamlit.
+- **Automated Data Cleaning**: Name normalization, duplicate row purging, date serialization, numeric imputation, and loss-leader detection.
+- **KPI Metrics Engine**: Live calculation of Revenue, Net Profit, Profit Margin, Average Order Value, Unique Order count, Unique Customer count, and MoM Growth rate.
+- **Relational SQL Playground**: Direct execution of queries against your upload session using SQLite. Runs on a secure, sandbox-isolated read-only connection.
+- **Statistical Forecasting**: Daily sales projection using Moving Averages and Linear Regression models.
+- **Drop Decomposition (RCA)**: Automatic analysis of Month-over-Month KPI drops to isolate culprit categories, products, or customers.
+- **Business Alert Rules**: Automated heuristics warning about customer concentration, low margins, logistics vulnerabilities, and data logging bugs.
 
 ## Quick Start
 
@@ -35,26 +20,41 @@ python -m pip install -r requirements.txt
 python -m streamlit run app/main.py
 ```
 
-Open the local URL shown by Streamlit and upload
-`data/raw/sales_data.csv`.
-
-You can also use the IDE's **Run Python File** button on `app/main.py`. The
-script detects direct execution and starts Streamlit automatically.
-
-Run the automated tests:
-
+Run automated unit tests:
 ```powershell
 python -m pytest
 ```
 
-## Beginner Guide
+## Production Deployment & Containerization
 
-Read [docs/PHASE_1_GUIDE.md](docs/PHASE_1_GUIDE.md) for the complete setup,
-business explanation, folder structure, cleaning logic, and code walkthrough.
+### Environment Variables
 
-Read [docs/PHASE_2_GUIDE.md](docs/PHASE_2_GUIDE.md) for KPI formulas, SQLite
-design, code explanations, and Phase 2 verification.
+| Variable | Description | Default |
+| --- | --- | --- |
+| `NORTHSTAR_DB_PATH` | Filepath to persistent SQLite file | `database/kpi_platform.db` |
 
-Later phases will add SQL analytics, trend analysis, root-cause analysis,
-forecasting, recommendations, Power BI, and the full multi-page Streamlit
-application.
+### SQLite Production Setup
+
+The platform uses SQLite optimized with **Write-Ahead Logging (WAL)** mode and `PRAGMA synchronous = NORMAL`. This maximizes read concurrency and prevents database write-locks in multi-user Streamlit deployments.
+
+### Docker Deployment
+
+To build and run as a lightweight container:
+
+1. Create a `Dockerfile`:
+```dockerfile
+FROM python:3.11-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+EXPOSE 8501
+ENV NORTHSTAR_DB_PATH=/app/data/kpi_platform.db
+CMD ["streamlit", "run", "app/main.py", "--server.port=8501", "--server.address=0.0.0.0"]
+```
+
+2. Build and run the image:
+```bash
+docker build -t northstar-app .
+docker run -p 8501:8501 -v /path/to/local/data:/app/data northstar-app
+```

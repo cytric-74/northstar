@@ -1,17 +1,13 @@
-"""Forecasting Engine for projecting future sales using Moving Average and Linear Regression."""
-
 from __future__ import annotations
 
 from typing import Any
 import numpy as np
 import pandas as pd
 
-
 def generate_forecast(
     data: pd.DataFrame,
     horizon_days: int = 30,
 ) -> dict[str, Any]:
-    """Generate daily sales forecasts using Moving Average and Linear Regression."""
     if data.empty or "Date" not in data.columns or "Revenue" not in data.columns:
         return {
             "forecast_df": pd.DataFrame(),
@@ -19,7 +15,6 @@ def generate_forecast(
             "explanations": ["Insufficient data or missing columns to run forecast models."],
         }
 
-    # Clean and aggregate daily sales
     df = data.dropna(subset=["Date", "Revenue"]).copy()
     df["Date"] = pd.to_datetime(df["Date"])
     daily = df.groupby("Date")["Revenue"].sum().sort_index()
@@ -31,19 +26,14 @@ def generate_forecast(
             "explanations": ["At least 5 unique days of historical sales are required to generate forecasts."],
         }
 
-    # Reindex to include all dates between min and max to fill in 0-revenue days
     full_idx = pd.date_range(start=daily.index.min(), end=daily.index.max(), freq="D")
     daily = daily.reindex(full_idx, fill_value=0.0)
     history_len = len(daily)
 
-    # 1. Linear Regression (y = m * x + c)
     x = np.arange(history_len)
     y = daily.values
-
-    # Fit linear regression model: y = m*x + c
     slope, intercept = np.polyfit(x, y, 1)
 
-    # Generate dates for forecast horizon
     future_dates = pd.date_range(
         start=daily.index.max() + pd.Timedelta(days=1),
         periods=horizon_days,
@@ -51,12 +41,8 @@ def generate_forecast(
     )
 
     x_future = np.arange(history_len, history_len + horizon_days)
-    lr_forecast = slope * x_future + intercept
-    # Make sure we don't predict negative sales
-    lr_forecast = np.clip(lr_forecast, 0, None)
+    lr_forecast = np.clip(slope * x_future + intercept, 0, None)
 
-    # 2. Moving Average Forecast (Rolling Auto-Regressive)
-    # Use a 7-day window or 30-day window depending on history size
     window = 14 if history_len >= 14 else 7
     ma_history = list(y)
     ma_forecast = []
@@ -66,7 +52,6 @@ def generate_forecast(
         ma_forecast.append(next_ma)
         ma_history.append(next_ma)
 
-    # Combine historical and forecasted data into a single DataFrame for graphing
     history_df = pd.DataFrame(
         {
             "Date": daily.index,
@@ -77,7 +62,6 @@ def generate_forecast(
         }
     )
 
-    # Add a bridging row so the charts connect continuously from historical to forecast
     bridge_row = pd.DataFrame(
         {
             "Date": [daily.index[-1]],
@@ -98,10 +82,8 @@ def generate_forecast(
         }
     )
 
-    # Concatenate results
     result_df = pd.concat([history_df, bridge_row, forecast_df]).reset_index(drop=True)
 
-    # Format explanations for beginner learning
     explanations = [
         "### 1. Moving Average (MA) Forecast Model\n\n"
         f"**Logic**: This model takes the average of the last **{window} days** of revenue to predict tomorrow's sales. "
