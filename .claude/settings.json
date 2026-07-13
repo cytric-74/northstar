@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./venv/Scripts/python.exe -c \"import ast; ast.parse\\(open\\('app/main.py'\\).read\\(\\)\\); print\\('syntax OK'\\)\")",
+      "Bash(PYTHONIOENCODING=utf-8 ./venv/Scripts/python.exe -m py_compile app/main.py)",
+      "Bash(PYTHONIOENCODING=utf-8 ./venv/Scripts/python.exe -m streamlit run app/main.py --server.headless true --server.port 8533)",
+      "Bash(echo \"started pid $!\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8533/)",
+      "Bash(PYTHONIOENCODING=utf-8 ./venv/Scripts/python.exe -c ' *)",
+      "Bash(PYTHONIOENCODING=utf-8 ./venv/Scripts/python.exe -m pytest -q)",
+      "Bash(kill 1162)",
+      "Bash(./venv/Scripts/python.exe -c \"import importlib.util as u; print\\('playwright', bool\\(u.find_spec\\('playwright'\\)\\)\\); print\\('selenium', bool\\(u.find_spec\\('selenium'\\)\\)\\); print\\('html2image', bool\\(u.find_spec\\('html2image'\\)\\)\\)\")",
+      "Read(//c/Program Files/Google/Chrome/Application/**)",
+      "Read(//c/Program Files \\\\\\(x86\\\\\\)/Microsoft/Edge/Application/**)"
+    ]
+  }
+}

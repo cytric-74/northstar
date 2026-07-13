@@ -163,7 +163,7 @@ def run_custom_query(
 ) -> pd.DataFrame:
     cleaned_sql = custom_sql.strip()
     if ";" in cleaned_sql:
-        raise ValueError("Security error: Multiple statements (semicolons) are not allowed.")
+        raise ValueError("Security error: Multiple statements (semicolons) are forbidden.")
     if not cleaned_sql.upper().startswith("SELECT") and not cleaned_sql.upper().startswith("WITH"):
         raise ValueError("Security error: Only SELECT or WITH queries are allowed.")
 
@@ -172,6 +172,17 @@ def run_custom_query(
         if keyword in cleaned_sql.upper():
             raise ValueError(f"Security error: Use of forbidden keyword '{keyword}' is not allowed.")
 
+    # Query an isolated in-memory snapshot rather than the persistent database.
+    # This keeps the playground scoped to the active upload even when a user
+    # omits `WHERE run_id = :run_id` from their query.
     db_uri = f"{Path(database_path).resolve().absolute().as_uri()}?mode=ro"
-    with closing(sqlite3.connect(db_uri, uri=True)) as connection:
-        return pd.read_sql_query(cleaned_sql, connection, params={"run_id": run_id})
+    with closing(sqlite3.connect(db_uri, uri=True)) as source_connection:
+        active_sales = pd.read_sql_query(
+            "SELECT * FROM sales_data WHERE run_id = :run_id",
+            source_connection,
+            params={"run_id": run_id},
+        )
+
+    with closing(sqlite3.connect(":memory:")) as sandbox_connection:
+        active_sales.to_sql("sales_data", sandbox_connection, index=False, if_exists="replace")
+        return pd.read_sql_query(cleaned_sql, sandbox_connection, params={"run_id": run_id})

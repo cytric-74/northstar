@@ -1,4 +1,5 @@
 import pandas as pd
+import pytest
 
 from app.data_quality import clean_sales_data, dataframe_to_csv_bytes
 
@@ -34,4 +35,27 @@ def test_dataframe_to_csv_bytes_formats_dates():
 
     result = dataframe_to_csv_bytes(source).decode("utf-8")
 
+    assert "2026-01-01" in result
+
+
+def test_clean_sales_data_supports_mixed_dates_and_rejects_ambiguous_columns():
+    source = pd.DataFrame(
+        {"Date": ["2026-01-01", "02/03/2026"], "Revenue": [100, 200]}
+    )
+    cleaned, _, _, _ = clean_sales_data(source)
+    assert len(cleaned) == 2
+    assert cleaned["Date"].notna().all()
+
+    with pytest.raises(ValueError, match="Ambiguous input"):
+        clean_sales_data(pd.DataFrame({"Date": ["2026-01-01"], " date ": ["2026-01-01"]}))
+
+    with pytest.raises(ValueError, match="No usable sales rows"):
+        clean_sales_data(pd.DataFrame({"Date": ["not-a-date"], "Revenue": [100]}))
+
+    with pytest.raises(ValueError, match="usable data rows and columns"):
+        clean_sales_data(pd.DataFrame(index=[0]))
+
+
+def test_dataframe_to_csv_bytes_handles_string_dates():
+    result = dataframe_to_csv_bytes(pd.DataFrame({"Date": ["2026-01-01"], "Revenue": [100]})).decode("utf-8")
     assert "2026-01-01" in result

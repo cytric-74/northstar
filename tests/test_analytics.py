@@ -56,6 +56,11 @@ def test_sql_analytics_engine(tmp_path, sample_sales_df):
     df_custom = run_custom_query(run_id, custom_sql, db_path)
     assert len(df_custom) == 2
 
+    second_run_id = save_analysis_run(sample_sales_df, kpis, "second.csv", db_path)
+    isolated = run_custom_query(run_id, "SELECT DISTINCT run_id FROM sales_data", db_path)
+    assert isolated["run_id"].tolist() == [run_id]
+    assert second_run_id != run_id
+
     # 4. Test security blocks
     with pytest.raises(ValueError, match="SELECT"):
         run_custom_query(run_id, "INSERT INTO sales_data DEFAULT VALUES", db_path)
@@ -147,3 +152,48 @@ def test_business_recommendation_triggers(sample_sales_df):
     assert any(r["title"] == "Audit Sales CSV Integration Script" for r in recs)
     # Should trigger invalid dates alert
     assert any(r["title"] == "Establish Clean Date Encoding Formats" for r in recs)
+
+
+def test_analytics_helpers_tolerate_dirty_dates_and_missing_profit():
+    data = pd.DataFrame(
+        {
+            "Date": ["2026-01-01", "bad", "2026-02-01"],
+            "Revenue": [100.0, 900.0, 80.0],
+            "Category": ["A", "A", "A"],
+        }
+    )
+    trends = calculate_trends(data)
+    assert len(trends["monthly_trends"]) == 2
+    assert trends["monthly_trends"]["Profit"].eq(0).all()
+
+    rca = analyze_root_cause(data, "Revenue")
+    assert rca["drop_detected"] is True
+
+    forecast = generate_forecast(data, horizon_days=10)
+    assert forecast["forecast_df"].empty
+
+
+def test_recommendations_do_not_divide_by_zero(sample_sales_df):
+    zero_revenue = sample_sales_df.copy()
+    zero_revenue["Revenue"] = 0.0
+    recs = generate_recommendations(
+        zero_revenue,
+        {"revenue": 0.0, "profit_margin": None},
+        {},
+    )
+    assert isinstance(recs, list)
+
+
+def test_trend_and_forecast_guardrails_for_zero_baseline_and_horizon():
+    data = pd.DataFrame(
+        {
+            "Date": pd.to_datetime(["2026-01-01", "2026-02-01"]),
+            "Revenue": [0.0, 100.0],
+            "Profit": [0.0, 20.0],
+        }
+    )
+    trends = calculate_trends(data)
+    assert "percentage comparison is unavailable" in trends["insights"][0]
+
+    with pytest.raises(ValueError, match="at least one day"):
+        generate_forecast(data, horizon_days=0)

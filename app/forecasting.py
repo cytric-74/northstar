@@ -8,6 +8,8 @@ def generate_forecast(
     data: pd.DataFrame,
     horizon_days: int = 30,
 ) -> dict[str, Any]:
+    if horizon_days < 1:
+        raise ValueError("Forecast horizon must be at least one day.")
     if data.empty or "Date" not in data.columns or "Revenue" not in data.columns:
         return {
             "forecast_df": pd.DataFrame(),
@@ -15,8 +17,16 @@ def generate_forecast(
             "explanations": ["Insufficient data or missing columns to run forecast models."],
         }
 
-    df = data.dropna(subset=["Date", "Revenue"]).copy()
-    df["Date"] = pd.to_datetime(df["Date"])
+    df = data.copy()
+    df["Date"] = pd.to_datetime(df["Date"], errors="coerce", format="mixed")
+    df["Revenue"] = pd.to_numeric(df["Revenue"], errors="coerce")
+    df = df.dropna(subset=["Date", "Revenue"])
+    if df.empty:
+        return {
+            "forecast_df": pd.DataFrame(),
+            "metrics": {},
+            "explanations": ["No valid dated revenue rows are available to run forecast models."],
+        }
     daily = df.groupby("Date")["Revenue"].sum().sort_index()
 
     if len(daily) < 5:
@@ -33,6 +43,11 @@ def generate_forecast(
     x = np.arange(history_len)
     y = daily.values
     slope, intercept = np.polyfit(x, y, 1)
+    fitted_history = slope * x + intercept
+    residuals = y - fitted_history
+    degrees_of_freedom = max(history_len - 2, 1)
+    residual_standard_error = float(np.sqrt(np.sum(residuals ** 2) / degrees_of_freedom))
+    x_centered_sum = float(np.sum((x - np.mean(x)) ** 2))
 
     future_dates = pd.date_range(
         start=daily.index.max() + pd.Timedelta(days=1),
@@ -42,6 +57,17 @@ def generate_forecast(
 
     x_future = np.arange(history_len, history_len + horizon_days)
     lr_forecast = np.clip(slope * x_future + intercept, 0, None)
+    # 95% prediction intervals communicate both model residual noise and the
+    # increasing uncertainty as the projection moves further from the data.
+    if x_centered_sum > 0:
+        prediction_se = residual_standard_error * np.sqrt(
+            1 + (1 / history_len) + ((x_future - np.mean(x)) ** 2 / x_centered_sum)
+        )
+    else:
+        prediction_se = np.full(horizon_days, residual_standard_error)
+    confidence_margin = 1.96 * prediction_se
+    lr_lower = np.clip(lr_forecast - confidence_margin, 0, None)
+    lr_upper = lr_forecast + confidence_margin
 
     window = 14 if history_len >= 14 else 7
     ma_history = list(y)
@@ -58,6 +84,8 @@ def generate_forecast(
             "Actual_Revenue": y,
             "Forecast_MA": np.nan,
             "Forecast_LR": np.nan,
+            "Forecast_LR_Lower": np.nan,
+            "Forecast_LR_Upper": np.nan,
             "Type": "Historical",
         }
     )
@@ -68,6 +96,8 @@ def generate_forecast(
             "Actual_Revenue": [y[-1]],
             "Forecast_MA": [y[-1]],
             "Forecast_LR": [y[-1]],
+            "Forecast_LR_Lower": [y[-1]],
+            "Forecast_LR_Upper": [y[-1]],
             "Type": ["Historical"],
         }
     )
@@ -78,6 +108,8 @@ def generate_forecast(
             "Actual_Revenue": np.nan,
             "Forecast_MA": ma_forecast,
             "Forecast_LR": lr_forecast,
+            "Forecast_LR_Lower": lr_lower,
+            "Forecast_LR_Upper": lr_upper,
             "Type": "Forecast",
         }
     )
@@ -108,6 +140,7 @@ def generate_forecast(
         "average_historical_daily": float(np.mean(y)),
         "horizon_total_ma": float(np.sum(ma_forecast)),
         "horizon_total_lr": float(np.sum(lr_forecast)),
+        "residual_standard_error": residual_standard_error,
     }
 
     return {

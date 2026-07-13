@@ -30,7 +30,9 @@ def generate_recommendations(
 
     if {"Product", "Revenue", "Profit"}.issubset(data.columns):
         product_stats = data.groupby("Product")[["Revenue", "Profit"]].sum()
-        product_stats["Margin_Pct"] = (product_stats["Profit"] / product_stats["Revenue"]) * 100
+        product_stats["Margin_Pct"] = (
+            product_stats["Profit"].div(product_stats["Revenue"].where(product_stats["Revenue"] != 0)) * 100
+        )
         unprofitable = product_stats[product_stats["Profit"] < 0].sort_values(by="Profit")
         for prod, row in unprofitable.head(2).iterrows():
             recommendations.append(
@@ -48,9 +50,11 @@ def generate_recommendations(
             )
 
     if {"Product", "Revenue", "Quantity"}.issubset(data.columns):
-        total_rev = kpis.get("revenue", 1.0)
+        total_rev = float(kpis.get("revenue") or 0.0)
+        if total_rev <= 0:
+            total_rev = 0.0
         product_revs = data.groupby("Product")["Revenue"].sum()
-        top_products = product_revs[product_revs / total_rev >= 0.20]
+        top_products = product_revs[product_revs / total_rev >= 0.20] if total_rev else pd.Series(dtype=float)
         for prod, rev in top_products.items():
             contrib = (rev / total_rev) * 100
             recommendations.append(
@@ -68,9 +72,9 @@ def generate_recommendations(
             )
 
     if {"Customer_ID", "Revenue"}.issubset(data.columns):
-        total_rev = kpis.get("revenue", 1.0)
+        total_rev = float(kpis.get("revenue") or 0.0)
         customer_revs = data.groupby("Customer_ID")["Revenue"].sum().drop("Unknown", errors="ignore")
-        if not customer_revs.empty:
+        if total_rev > 0 and not customer_revs.empty:
             top_cust = customer_revs.idxmax()
             top_cust_rev = customer_revs.max()
             cust_contrib = (top_cust_rev / total_rev) * 100

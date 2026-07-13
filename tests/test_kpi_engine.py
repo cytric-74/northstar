@@ -43,3 +43,15 @@ def test_monthly_growth_is_unavailable_with_one_month():
 def test_kpi_engine_reports_missing_required_columns():
     with pytest.raises(ValueError, match="Profit"):
         calculate_kpis(pd.DataFrame({"Revenue": [100]}))
+
+
+def test_monthly_growth_accepts_string_dates_and_invalid_rows():
+    data = pd.DataFrame(
+        {
+            "Date": ["2026-01-01", "02/01/2026", "invalid"],
+            "Revenue": [100, 150, 999],
+        }
+    )
+    result = calculate_monthly_growth(data)
+    assert result["growth_rate"] == 50
+    assert result["current_period"] == "2026-02"

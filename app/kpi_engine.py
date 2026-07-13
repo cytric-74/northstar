@@ -49,10 +49,10 @@ def validate_kpi_columns(data: pd.DataFrame) -> None:
         raise ValueError("KPI calculations require these missing columns: " + ", ".join(missing))
 
 def calculate_revenue(data: pd.DataFrame) -> float:
-    return float(data["Revenue"].sum())
+    return float(pd.to_numeric(data["Revenue"], errors="coerce").fillna(0).sum())
 
 def calculate_profit(data: pd.DataFrame) -> float:
-    return float(data["Profit"].sum())
+    return float(pd.to_numeric(data["Profit"], errors="coerce").fillna(0).sum())
 
 def calculate_profit_margin(data: pd.DataFrame) -> float | None:
     rev = calculate_revenue(data)
@@ -84,11 +84,14 @@ def calculate_monthly_growth(data: pd.DataFrame) -> dict[str, Any]:
     if "Date" not in data.columns:
         return null_res
 
-    dated = data.dropna(subset=["Date"]).copy()
+    dated = data.copy()
+    dated["Date"] = pd.to_datetime(dated["Date"], errors="coerce", format="mixed")
+    dated = dated.dropna(subset=["Date"])
     if dated.empty:
         return null_res
 
     dated["Month"] = dated["Date"].dt.to_period("M")
+    dated["Revenue"] = pd.to_numeric(dated["Revenue"], errors="coerce").fillna(0)
     monthly_rev = dated.groupby("Month")["Revenue"].sum().sort_index()
 
     if len(monthly_rev) < 2:

@@ -51,7 +51,14 @@ def standardize_column_names(data: pd.DataFrame) -> pd.DataFrame:
     for column in cleaned.columns:
         normalized = re.sub(r"[^a-z0-9]", "", str(column).strip().lower())
         renamed_columns[column] = expected_lookup.get(normalized, str(column).strip())
-    return cleaned.rename(columns=renamed_columns)
+    cleaned = cleaned.rename(columns=renamed_columns)
+    duplicated = cleaned.columns[cleaned.columns.duplicated()].unique().tolist()
+    if duplicated:
+        raise ValueError(
+            "Ambiguous input: multiple columns map to " + ", ".join(map(str, duplicated))
+            + ". Keep only one version of each field before uploading."
+        )
+    return cleaned
 
 def _clean_numeric_series(series: pd.Series) -> pd.Series:
     text_values = series.astype("string").str.strip()
@@ -81,8 +88,8 @@ def build_column_report(before: pd.DataFrame, after: pd.DataFrame) -> pd.DataFra
 def clean_sales_data(
     data: pd.DataFrame,
 ) -> tuple[pd.DataFrame, dict[str, Any], pd.DataFrame, list[str]]:
-    if data.empty:
-        raise ValueError("The uploaded CSV does not contain any data rows.")
+    if data.empty or data.shape[1] == 0:
+        raise ValueError("The uploaded CSV does not contain usable data rows and columns.")
 
     original = standardize_column_names(data)
     cleaned = original.copy()
@@ -101,7 +108,9 @@ def clean_sales_data(
     invalid_dates = 0
     if "Date" in cleaned.columns:
         original_dates = cleaned["Date"].copy()
-        cleaned["Date"] = pd.to_datetime(cleaned["Date"], errors="coerce")
+        # Mixed exports are common in spreadsheet uploads; format='mixed' avoids
+        # inferring one row's date format for the entire column.
+        cleaned["Date"] = pd.to_datetime(cleaned["Date"], errors="coerce", format="mixed")
         invalid_dates = int(original_dates.notna().sum() - cleaned["Date"].notna().sum())
         unusable_date_rows = int(cleaned["Date"].isna().sum())
         if unusable_date_rows:
@@ -142,6 +151,8 @@ def clean_sales_data(
 
     cleaned = cleaned.sort_values("Date") if "Date" in cleaned.columns else cleaned
     cleaned = cleaned.reset_index(drop=True)
+    if cleaned.empty:
+        raise ValueError("No usable sales rows remain after cleaning. Check Date values and upload again.")
     missing_expected = [column for column in EXPECTED_COLUMNS if column not in cleaned]
     if missing_expected:
         actions.append("Optional expected columns missing: " + ", ".join(missing_expected))
@@ -167,5 +178,6 @@ def clean_data(data: pd.DataFrame) -> pd.DataFrame:
 def dataframe_to_csv_bytes(data: pd.DataFrame) -> bytes:
     export = data.copy()
     if "Date" in export.columns:
-        export["Date"] = export["Date"].dt.strftime("%Y-%m-%d")
+        dates = pd.to_datetime(export["Date"], errors="coerce", format="mixed")
+        export["Date"] = dates.dt.strftime("%Y-%m-%d").fillna("")
     return export.to_csv(index=False).encode("utf-8")

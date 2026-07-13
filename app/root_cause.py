@@ -15,14 +15,19 @@ def analyze_root_cause(data: pd.DataFrame, metric: str = "Revenue") -> dict[str,
         "current_month": None,
         "previous_month": None,
         "dimension_reports": {},
+        "dimension_changes": {},
         "explanations": ["Insufficient data or missing columns to perform root cause analysis."],
     }
 
     if data.empty or "Date" not in data.columns or metric not in data.columns:
         return null_res
 
-    df = data.dropna(subset=["Date", metric]).copy()
-    df["Date"] = pd.to_datetime(df["Date"])
+    df = data.copy()
+    df["Date"] = pd.to_datetime(df["Date"], errors="coerce", format="mixed")
+    df[metric] = pd.to_numeric(df[metric], errors="coerce")
+    df = df.dropna(subset=["Date", metric])
+    if df.empty:
+        return null_res
     df["Month_Period"] = df["Date"].dt.to_period("M")
 
     monthly = df.groupby("Month_Period")[metric].sum().sort_index()
@@ -36,6 +41,7 @@ def analyze_root_cause(data: pd.DataFrame, metric: str = "Revenue") -> dict[str,
             "current_month": str(monthly.index[-1]) if not monthly.empty else None,
             "previous_month": None,
             "dimension_reports": {},
+            "dimension_changes": {},
             "explanations": ["At least two months of historical data are required to run Root Cause Analysis."],
         }
 
@@ -53,6 +59,7 @@ def analyze_root_cause(data: pd.DataFrame, metric: str = "Revenue") -> dict[str,
             "current_month": str(current_month),
             "previous_month": str(previous_month),
             "dimension_reports": {},
+            "dimension_changes": {},
             "explanations": [
                 f"No decline detected! Overall {metric} increased by **{pct_change:.1f}%** "
                 f"from {previous_month} to {current_month} (+${total_change:,.2f})."
@@ -62,6 +69,7 @@ def analyze_root_cause(data: pd.DataFrame, metric: str = "Revenue") -> dict[str,
     total_drop = abs(total_change)
     dimensions = ["Category", "Product", "Customer_ID"]
     dimension_reports = {}
+    dimension_changes = {}
     explanations = [
         f"Overall {metric} declined by **{abs(pct_change):.1f}%** (-${total_drop:,.2f}) "
         f"from {previous_month} (${previous_val:,.2f}) to {current_month} (${current_val:,.2f})."
@@ -82,13 +90,16 @@ def analyze_root_cause(data: pd.DataFrame, metric: str = "Revenue") -> dict[str,
         dim_grouped["Change"] = dim_grouped[current_month] - dim_grouped[previous_month]
         dim_grouped["Pct_Change"] = ((dim_grouped["Change"] / dim_grouped[previous_month]) * 100).replace([float("inf"), float("-inf")], 0.0).fillna(0.0)
         
-        contributors = dim_grouped[dim_grouped["Change"] < 0].copy()
+        # Keep the complete change series for visualizations.  The table below
+        # remains focused on negative contributors, while the raw list also
+        # exposes offsets and growth that reconcile to the total movement.
+        dim_grouped["Abs_Change"] = dim_grouped["Change"].abs()
+        dim_grouped["Contribution_Pct"] = (dim_grouped["Abs_Change"] / total_drop) * 100
+        all_changes = dim_grouped.sort_values(by="Change", ascending=True).copy()
+
+        contributors = all_changes[all_changes["Change"] < 0].copy()
         if contributors.empty:
             continue
-
-        contributors["Abs_Change"] = contributors["Change"].abs()
-        contributors["Contribution_Pct"] = (contributors["Abs_Change"] / total_drop) * 100
-        contributors = contributors.sort_values(by="Change", ascending=True)
 
         top_culprit = contributors.index[0]
         culprit_prev = contributors.loc[top_culprit, previous_month]
@@ -98,7 +109,9 @@ def analyze_root_cause(data: pd.DataFrame, metric: str = "Revenue") -> dict[str,
         contrib_pct = contributors.loc[top_culprit, "Contribution_Pct"]
 
         contributors.columns = [str(col) for col in contributors.columns]
+        all_changes.columns = [str(col) for col in all_changes.columns]
         dimension_reports[dim] = contributors.reset_index()
+        dimension_changes[dim] = all_changes.reset_index()
 
         display_name = f"Customer '{top_culprit}'" if dim == "Customer_ID" else str(top_culprit)
         explanations.append(
@@ -116,6 +129,9 @@ def analyze_root_cause(data: pd.DataFrame, metric: str = "Revenue") -> dict[str,
         "previous_month": str(previous_month),
         "dimension_reports": {
             dim: df_report.to_dict("records") for dim, df_report in dimension_reports.items()
+        },
+        "dimension_changes": {
+            dim: df_report.to_dict("records") for dim, df_report in dimension_changes.items()
         },
         "explanations": explanations,
     }

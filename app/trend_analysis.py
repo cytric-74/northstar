@@ -19,11 +19,17 @@ def calculate_trends(data: pd.DataFrame) -> dict[str, Any]:
     if data.empty or "Date" not in data.columns or "Revenue" not in data.columns:
         return null_res
 
-    df = data.dropna(subset=["Date"]).copy()
+    df = data.copy()
+    df["Date"] = pd.to_datetime(df["Date"], errors="coerce", format="mixed")
+    df = df.dropna(subset=["Date"])
     if df.empty:
         return null_res
 
-    df["Date"] = pd.to_datetime(df["Date"])
+    df["Revenue"] = pd.to_numeric(df["Revenue"], errors="coerce").fillna(0)
+    if "Profit" not in df.columns:
+        df["Profit"] = 0.0
+    else:
+        df["Profit"] = pd.to_numeric(df["Profit"], errors="coerce").fillna(0)
     df["Month_Period"] = df["Date"].dt.to_period("M")
     df["Quarter_Period"] = df["Date"].dt.to_period("Q")
     df["Year_Period"] = df["Date"].dt.to_period("Y")
@@ -65,12 +71,18 @@ def calculate_trends(data: pd.DataFrame) -> dict[str, Any]:
     insights = []
     if len(monthly) >= 2:
         latest_val, prev_val = monthly["Revenue"].iloc[-1], monthly["Revenue"].iloc[-2]
-        growth = ((latest_val - prev_val) / prev_val) * 100
-        direction = "increased" if growth >= 0 else "decreased"
-        insights.append(
-            f"Revenue {direction} by {abs(growth):.1f}% in the latest month ({monthly.index[-1]}) "
-            f"compared to the previous month ({monthly.index[-2]}) (${latest_val:,.2f} vs ${prev_val:,.2f})."
-        )
+        if prev_val == 0:
+            insights.append(
+                f"Revenue was ${latest_val:,.2f} in the latest month ({monthly.index[-1]}). "
+                f"A percentage comparison is unavailable because the previous month had zero revenue."
+            )
+        else:
+            growth = ((latest_val - prev_val) / prev_val) * 100
+            direction = "increased" if growth >= 0 else "decreased"
+            insights.append(
+                f"Revenue {direction} by {abs(growth):.1f}% in the latest month ({monthly.index[-1]}) "
+                f"compared to the previous month ({monthly.index[-2]}) (${latest_val:,.2f} vs ${prev_val:,.2f})."
+            )
         
         latest_profit, prev_profit = monthly["Profit"].iloc[-1], monthly["Profit"].iloc[-2]
         profit_growth = ((latest_profit - prev_profit) / prev_profit) * 100 if prev_profit != 0 else 0.0
@@ -82,12 +94,18 @@ def calculate_trends(data: pd.DataFrame) -> dict[str, Any]:
 
     if len(quarterly) >= 2:
         latest_val, prev_val = quarterly["Revenue"].iloc[-1], quarterly["Revenue"].iloc[-2]
-        growth = ((latest_val - prev_val) / prev_val) * 100
-        direction = "increased" if growth >= 0 else "decreased"
-        insights.append(
-            f"Quarterly Revenue {direction} by {abs(growth):.1f}% in {quarterly.index[-1]} "
-            f"compared to {quarterly.index[-2]} (${latest_val:,.2f} vs ${prev_val:,.2f})."
-        )
+        if prev_val == 0:
+            insights.append(
+                f"Quarterly revenue was ${latest_val:,.2f} in {quarterly.index[-1]}; "
+                "the previous quarter had zero revenue, so percentage growth is unavailable."
+            )
+        else:
+            growth = ((latest_val - prev_val) / prev_val) * 100
+            direction = "increased" if growth >= 0 else "decreased"
+            insights.append(
+                f"Quarterly Revenue {direction} by {abs(growth):.1f}% in {quarterly.index[-1]} "
+                f"compared to {quarterly.index[-2]} (${latest_val:,.2f} vs ${prev_val:,.2f})."
+            )
 
     if best_month:
         insights.append(f"Peak sales occurred in {best_month} with total revenue of ${best_month_revenue:,.2f}.")
